@@ -1,0 +1,22 @@
+{
+  "name": "json-edit-format",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lint": "^6.8.0",
+    "@codemirror/view": "^6.36.0",
+    "codemirror": "^6.0.1",
+    "jsonc-parser": "^3.3.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
