@@ -1,5 +1,8 @@
 import { basicSetup } from 'codemirror';
 import { EditorView, keymap } from '@codemirror/view';
+import { Compartment } from '@codemirror/state';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { json } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { inspect, transform, compare } from './json.js';
@@ -7,15 +10,55 @@ import './style.css';
 
 const app = document.querySelector('#app');
 app.innerHTML = `
-  <header class="header"><a class="brand" href="./"><span class="logo">{ }</span> JSON<span class="brand-light">Studio</span></a><span class="privacy"><span class="dot"></span> 本機處理 · 無廣告</span><a class="github" href="https://github.com/Urash0519/json-edit-format" target="_blank" rel="noreferrer">GitHub ↗</a></header>
-  <main><section class="heading"><div class="eyebrow">YOUR EVERYDAY JSON WORKSPACE</div><h1>讓 JSON，一目了然。</h1><p>貼上、整理、比對。專注在資料本身。</p></section>
+  <header class="header"><a class="brand" href="./"><span class="logo">{ }</span> JSON<span class="brand-light">Studio</span></a><label class="theme-control">主題 <select id="theme"><option value="system">跟隨系統</option><option value="light">Light 淺色</option><option value="dark">Dark 深色</option></select></label></header>
+  <main>
   <section class="workspace" aria-label="JSON 工作區"><div class="workbar"><div class="work-title"><span class="workspace-dot"></span> 雙欄編輯器</div><div class="global-actions"><label>縮排 <select id="indent"><option value="2">2 格</option><option value="4">4 格</option></select></label><button id="format-all">格式化兩側</button><button id="compare" class="primary">⇄ 比對內容</button></div></div>
   <div class="editors">${['left', 'right'].map((side, i) => `<section class="pane"><div class="pane-title"><div><span class="panel-index">0${i + 1}</span><h2>${i ? '右側 JSON' : '左側 JSON'}</h2><span class="file-label">${i ? '修改版本' : '原始版本'}</span></div><button data-side="${side}" data-action="import" class="text-button">開啟檔案 ↗</button><input type="file" id="${side}-file" accept=".json,application/json,text/plain" hidden></div><div class="pane-actions"><button data-side="${side}" data-action="format">格式化</button><button data-side="${side}" data-action="compact">壓縮</button><span class="spacer"></span><button data-side="${side}" data-action="copy">複製</button><button data-side="${side}" data-action="download">下載</button><button data-side="${side}" data-action="clear">清空</button></div><div id="${side}-editor" class="editor"></div><div class="pane-status"><button id="${side}-status" class="validation" title="點擊跳至錯誤位置"></button><span id="${side}-count"></span></div></section>`).join('')}</div>
-  <div class="workspace-bottom"><span>⌘ / Ctrl + Enter 格式化 · Ctrl / ⌘ + F 搜尋</span><button id="swap" class="text-button">⇄ 交換左右</button></div></section>
+  <div class="workspace-bottom"><span>⌘ / Ctrl + Enter 格式化 · Ctrl / ⌘ + F 搜尋</span><label class="height-control" for="editor-height">編輯區高度 <input id="editor-height" type="range" min="300" max="1400" step="10"><output id="height-value" for="editor-height"></output></label><button id="reset-height" class="text-button">自動高度</button><button id="swap" class="text-button">⇄ 交換左右</button></div></section>
   <section class="results" aria-label="比對結果"><div class="result-head"><h2>比對結果 <span id="diff-count" class="badge">—</span></h2><span>忽略空白與物件欄位順序 · 保留陣列順序</span></div><div id="results" aria-live="polite"><div class="empty-result"><span class="compare-icon">⇄</span><div><strong>每個差異，都有跡可循。</strong><p>在兩側貼上 JSON，再按「比對內容」。</p></div></div></div></section>
   <footer><span>資料不會上傳，也不會自動儲存。重新整理前，請先下載或複製。</span><span>JSON Studio <span class="footer-mark">{ }</span></span></footer></main><div id="toast" role="status" class="toast" hidden></div>`;
 
 const views = {};
+const themeCompartments = {};
+const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+const readPreference = key => { try { return localStorage.getItem(key); } catch { return null; } };
+const savePreference = (key, value) => { try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch { /* Preferences are optional when storage is unavailable. */ } };
+const themeSelect = document.querySelector('#theme');
+const savedTheme = readPreference('json-studio-theme');
+themeSelect.value = ['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : 'system';
+const darkTheme = () => themeSelect.value === 'dark' || (themeSelect.value === 'system' && systemTheme.matches);
+function editorTheme() {
+  const dark = darkTheme();
+  return [EditorView.theme({}, { dark }), syntaxHighlighting(HighlightStyle.define([
+    { tag: tags.propertyName, color: dark ? '#91c9ff' : '#285f92' },
+    { tag: tags.string, color: dark ? '#a9d995' : '#327243' },
+    { tag: tags.number, color: dark ? '#f3c58d' : '#975213' },
+    { tag: [tags.bool, tags.null], color: dark ? '#cbb0f5' : '#8553a3' },
+    { tag: tags.punctuation, color: dark ? '#bac7c2' : '#5b6f64' },
+  ]))];
+}
+function applyTheme() {
+  document.documentElement.dataset.theme = darkTheme() ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]').content = darkTheme() ? '#171e1b' : '#ffffff';
+  for (const side of Object.keys(views)) views[side].dispatch({ effects: themeCompartments[side].reconfigure(editorTheme()) });
+}
+themeSelect.onchange = () => { savePreference('json-studio-theme', themeSelect.value); applyTheme(); };
+systemTheme.addEventListener('change', () => { if (themeSelect.value === 'system') applyTheme(); });
+applyTheme();
+const heightInput = document.querySelector('#editor-height');
+const storedHeight = Number(readPreference('json-studio-height'));
+let manualHeight = storedHeight >= 300 && storedHeight <= 1400 ? storedHeight : null;
+function applyHeight() {
+  const height = manualHeight ?? Math.max(420, Math.min(1400, Math.round((innerHeight - 270) / 10) * 10));
+  document.documentElement.style.setProperty('--editor-height', `${height}px`);
+  heightInput.value = height;
+  document.querySelector('#height-value').textContent = `${height}px`;
+  for (const view of Object.values(views)) view.requestMeasure();
+}
+heightInput.oninput = () => { manualHeight = Number(heightInput.value); savePreference('json-studio-height', String(manualHeight)); applyHeight(); };
+document.querySelector('#reset-height').onclick = () => { manualHeight = null; savePreference('json-studio-height', null); applyHeight(); };
+window.addEventListener('resize', () => { if (manualHeight === null) applyHeight(); });
+applyHeight();
 let compared = false, toastTimer;
 const notify = message => { const el = document.querySelector('#toast'); el.textContent = message; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500); };
 const content = side => views[side].state.doc.toString();
@@ -33,7 +76,8 @@ function refresh(side) {
 function jump(side, position) { if (position === undefined) return; const view = views[side]; view.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: 'center' }) }); view.focus(); }
 function runTransform(side, compact = false) { try { setContent(side, transform(content(side), Number(document.querySelector('#indent').value), compact)); return true; } catch (error) { notify(error.message); const first = inspect(content(side)).issues[0]; if (first) jump(side, first.offset); return false; } }
 for (const side of ['left', 'right']) {
-  views[side] = new EditorView({ parent: document.querySelector(`#${side}-editor`), extensions: [basicSetup, json(), EditorView.lineWrapping,
+  themeCompartments[side] = new Compartment();
+  views[side] = new EditorView({ parent: document.querySelector(`#${side}-editor`), extensions: [basicSetup, json(), EditorView.lineWrapping, themeCompartments[side].of(editorTheme()),
     EditorView.contentAttributes.of({ 'aria-label': side === 'left' ? '左側 JSON 編輯器' : '右側 JSON 編輯器', spellcheck: 'false' }),
     keymap.of([{ key: 'Mod-Enter', run: () => { runTransform(side); return true; } }]),
     linter(view => { const text = view.state.doc.toString(); return text.trim() ? inspect(text).issues.map(e => ({ from: e.offset, to: Math.min(e.offset + e.length, text.length), severity: 'error', message: e.message })) : []; }),
