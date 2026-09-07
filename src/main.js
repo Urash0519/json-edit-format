@@ -6,6 +6,7 @@ import { tags } from '@lezer/highlight';
 import { json } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { inspect, transform, compare } from './json.js';
+import { loadDocument, saveDocument } from './storage.js';
 import './style.css';
 
 const app = document.querySelector('#app');
@@ -22,13 +23,13 @@ const iconPaths = {
 };
 const icon = name => `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${iconPaths[name]}</svg>`;
 app.innerHTML = `
-  <header class="header"><a class="brand" href="./"><span class="logo">{ }</span> JSON<span class="brand-light">Studio</span></a><label class="theme-control">主題 <select id="theme"><option value="system">跟隨系統</option><option value="light">Light 淺色</option><option value="dark">Dark 深色</option></select></label></header>
+  <header class="header"><a class="brand" href="./"><span class="logo">{ }</span> JSON<span class="brand-light">Studio</span></a><label class="theme-control">主題 <select id="theme"><option value="system">跟隨系統</option><option value="light">Light 淺色</option><option value="dark">Dark 深色</option><option value="blue">Blue 藍灰白</option></select></label></header>
   <main>
   <section class="workspace" aria-label="JSON 工作區"><div class="workbar"><div class="work-title"><span class="workspace-dot"></span> 雙欄編輯器</div><div class="global-actions"><label>縮排 <select id="indent"><option value="2">2 格</option><option value="4">4 格</option></select></label><button id="format-all">格式化兩側</button><button id="compare" class="primary">⇄ 比對內容</button></div></div>
   <div class="editors">${['left', 'right'].map((side, i) => `<section class="pane"><div class="pane-title"><div><span class="panel-index">0${i + 1}</span><h2>${i ? '右側 JSON' : '左側 JSON'}</h2><span class="file-label">${i ? '修改版本' : '原始版本'}</span></div><button data-side="${side}" data-action="import" class="text-button">開啟檔案 ↗</button><input type="file" id="${side}-file" accept=".json,application/json,text/plain" hidden></div><div class="pane-actions"><button data-side="${side}" data-action="format">格式化</button><button data-side="${side}" data-action="compact">壓縮</button><span class="spacer"></span><button data-side="${side}" data-action="copy">複製</button><button data-side="${side}" data-action="download">下載</button><button data-side="${side}" data-action="clear">清空</button></div><div id="${side}-editor" class="editor"></div><div class="pane-status"><button id="${side}-status" class="validation" title="點擊跳至錯誤位置"></button><span id="${side}-count"></span></div></section>`).join('')}</div>
   <div class="workspace-bottom"><span>⌘ / Ctrl + Enter 格式化 · Ctrl / ⌘ + F 搜尋</span><label class="height-control" for="editor-height">編輯區高度 <input id="editor-height" type="range" min="300" max="1400" step="10"><output id="height-value" for="editor-height"></output></label><button id="reset-height" class="text-button">自動高度</button><button id="swap" class="text-button">⇄ 交換左右</button></div></section>
   <section class="results" aria-label="比對結果"><div class="result-head"><h2>比對結果 <span id="diff-count" class="badge">—</span></h2><span>忽略空白與物件欄位順序 · 保留陣列順序</span></div><div id="results" aria-live="polite"><div class="empty-result"><span class="compare-icon">⇄</span><div><strong>每個差異，都有跡可循。</strong><p>在兩側貼上 JSON，再按「比對內容」。</p></div></div></div></section>
-  <footer><span>資料不會上傳，也不會自動儲存。重新整理前，請先下載或複製。</span><span>JSON Studio <span class="footer-mark">{ }</span></span></footer></main><div id="toast" role="status" class="toast" hidden></div>`;
+  <footer><span id="save-status" role="status">自動保存於此瀏覽器，不會上傳。</span><span>JSON Studio <span class="footer-mark">{ }</span></span></footer></main><div id="toast" role="status" class="toast" hidden></div>`;
 
 const views = {};
 document.querySelectorAll('[data-action]').forEach(button => {
@@ -47,7 +48,7 @@ const readPreference = key => { try { return localStorage.getItem(key); } catch 
 const savePreference = (key, value) => { try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch { /* Preferences are optional when storage is unavailable. */ } };
 const themeSelect = document.querySelector('#theme');
 const savedTheme = readPreference('json-studio-theme');
-themeSelect.value = ['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : 'system';
+themeSelect.value = ['light', 'dark', 'blue', 'system'].includes(savedTheme) ? savedTheme : 'system';
 const darkTheme = () => themeSelect.value === 'dark' || (themeSelect.value === 'system' && systemTheme.matches);
 function editorTheme() {
   const dark = darkTheme();
@@ -60,8 +61,8 @@ function editorTheme() {
   ]))];
 }
 function applyTheme() {
-  document.documentElement.dataset.theme = darkTheme() ? 'dark' : 'light';
-  document.querySelector('meta[name="theme-color"]').content = darkTheme() ? '#1c201d' : '#f3f4ef';
+  document.documentElement.dataset.theme = darkTheme() ? 'dark' : themeSelect.value === 'blue' ? 'blue' : 'light';
+  document.querySelector('meta[name="theme-color"]').content = darkTheme() ? '#1c201d' : themeSelect.value === 'blue' ? '#eef2f6' : '#f3f4ef';
   for (const side of Object.keys(views)) views[side].dispatch({ effects: themeCompartments[side].reconfigure(editorTheme()) });
 }
 themeSelect.onchange = () => { savePreference('json-studio-theme', themeSelect.value); applyTheme(); };
@@ -84,6 +85,30 @@ applyHeight();
 let compared = false, toastTimer;
 const notify = message => { const el = document.querySelector('#toast'); el.textContent = message; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500); };
 const content = side => views[side].state.doc.toString();
+let documentStorage;
+try { documentStorage = window.localStorage; } catch { /* Report unavailable storage below. */ }
+const restored = Object.fromEntries(['left', 'right'].map(side => [side, loadDocument(documentStorage, side)]));
+const dirtySides = new Set();
+let saveTimer;
+const saveStatus = document.querySelector('#save-status');
+function flushDocuments() {
+  clearTimeout(saveTimer);
+  for (const side of dirtySides) if (saveDocument(documentStorage, side, content(side))) dirtySides.delete(side);
+  saveStatus.classList.toggle('invalid', dirtySides.size > 0);
+  saveStatus.textContent = dirtySides.size ? '無法保存：瀏覽器儲存空間不足或被停用，請先下載或複製。' : '已保存於此瀏覽器，不會上傳。';
+}
+function scheduleSave(side) {
+  dirtySides.add(side);
+  saveStatus.textContent = '正在保存…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushDocuments, 300);
+}
+if (Object.values(restored).some(result => !result.ok)) {
+  saveStatus.classList.add('invalid');
+  saveStatus.textContent = '無法讀取瀏覽器紀錄；本次內容請先下載或複製。';
+} else if (Object.values(restored).some(result => result.text)) saveStatus.textContent = '已還原上次內容；變更會自動保存於此瀏覽器。';
+window.addEventListener('pagehide', () => { if (dirtySides.size) flushDocuments(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && dirtySides.size) flushDocuments(); });
 function setContent(side, text) { views[side].dispatch({ changes: { from: 0, to: views[side].state.doc.length, insert: text } }); }
 function invalidate() { if (compared) { document.querySelector('#diff-count').textContent = '待更新'; document.querySelector('#results').textContent = '內容已變更，請重新比對。'; compared = false; } }
 function refresh(side) {
@@ -99,11 +124,12 @@ function jump(side, position) { if (position === undefined) return; const view =
 function runTransform(side, compact = false) { try { setContent(side, transform(content(side), Number(document.querySelector('#indent').value), compact)); return true; } catch (error) { notify(error.message); const first = inspect(content(side)).issues[0]; if (first) jump(side, first.offset); return false; } }
 for (const side of ['left', 'right']) {
   themeCompartments[side] = new Compartment();
-  views[side] = new EditorView({ parent: document.querySelector(`#${side}-editor`), extensions: [basicSetup, json(), EditorView.lineWrapping, themeCompartments[side].of(editorTheme()),
+  views[side] = new EditorView({ doc: restored[side].text, parent: document.querySelector(`#${side}-editor`), extensions: [basicSetup, json(), EditorView.lineWrapping, themeCompartments[side].of(editorTheme()),
+    EditorView.editorAttributes.of(view => ({ class: view.state.selection.ranges.some(range => !range.empty) ? 'has-selection' : '' })),
     EditorView.contentAttributes.of({ 'aria-label': side === 'left' ? '左側 JSON 編輯器' : '右側 JSON 編輯器', spellcheck: 'false' }),
     keymap.of([{ key: 'Mod-Enter', run: () => { runTransform(side); return true; } }]),
     linter(view => { const text = view.state.doc.toString(); return text.trim() ? inspect(text).issues.map(e => ({ from: e.offset, to: Math.min(e.offset + e.length, text.length), severity: 'error', message: e.message })) : []; }),
-    EditorView.updateListener.of(update => { if (update.docChanged) refresh(side); }),
+    EditorView.updateListener.of(update => { if (update.docChanged) { refresh(side); scheduleSave(side); } }),
   ] });
   refresh(side);
   document.querySelector(`#${side}-file`).addEventListener('change', async event => {

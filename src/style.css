@@ -2,7 +2,7 @@
   color-scheme: light;
   --page: #f3f4ef; --surface: #ffffff; --workspace: #f9faf7; --subtle: #f5f7f2;
   --text: #343e37; --muted: #69756b; --border: #e5e9e1; --hover: #edf1e9;
-  --active: #f5f8f1; --success: #526e4c; --error: #b34f48; --selection: #dce8d2;
+  --active: #f5f8f1; --success: #526e4c; --error: #b34f48; --selection: #b9d1a3; --match: #e1ebd7; --match-border: #93ac7e;
   --accent: #d6e3ca; --accent-hover: #c7d9b9; --accent-text: #33482c; --focus: #7c966b;
   --shadow: 0 3px 16px #343e3705;
   font-family: Inter, "Noto Sans TC", "Segoe UI", sans-serif;
@@ -12,9 +12,17 @@
   color-scheme: dark;
   --page: #1c201d; --surface: #252a26; --workspace: #222723; --subtle: #2a302b;
   --text: #e2e7de; --muted: #adb7aa; --border: #363e35; --hover: #343d31;
-  --active: #2c3429; --success: #aec99c; --error: #eda7a0; --selection: #46563c;
+  --active: #2c3429; --success: #aec99c; --error: #eda7a0; --selection: #516843; --match: #35442d; --match-border: #7e9869;
   --accent: #a9be98; --accent-hover: #bacdab; --accent-text: #26321f; --focus: #a9be98;
   --shadow: 0 3px 16px #00000010;
+}
+:root[data-theme="blue"] {
+  --page: #eef2f6; --surface: #ffffff; --workspace: #f6f8fb; --subtle: #f0f4f8;
+  --text: #334155; --muted: #617287; --border: #dfe6ee; --hover: #e6edf5;
+  --active: #f2f6fb; --success: #426c5b; --error: #b34f48;
+  --selection: #b4cde9; --match: #e0eaf6; --match-border: #89a8ca;
+  --accent: #cfdfef; --accent-hover: #bed2e8; --accent-text: #304e70; --focus: #6d8fb5;
+  --shadow: 0 3px 16px #33415506;
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -63,6 +71,9 @@ p { line-height: 1.6; }
 .cm-focused { outline: none !important; }
 .cm-cursor, .cm-dropCursor { border-left-color: var(--text) !important; }
 .cm-selectionBackground, .cm-focused .cm-selectionBackground, .cm-content ::selection { background: var(--selection) !important; }
+.cm-editor.has-selection .cm-activeLine { background: transparent !important; }
+.cm-selectionMatch { background: var(--match) !important; box-shadow: inset 0 -1px var(--match-border); }
+.cm-selectionMatch .cm-searchMatch { background: transparent !important; }
 .cm-panels, .cm-tooltip { background: var(--subtle) !important; color: var(--text) !important; border-color: var(--border) !important; }
 .cm-textfield, .cm-button { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; border-radius: 8px !important; }
 .cm-searchMatch { background: #bc963244 !important; }
