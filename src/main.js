@@ -9,6 +9,18 @@ import { inspect, transform, compare } from './json.js';
 import './style.css';
 
 const app = document.querySelector('#app');
+// Inline outline icons are decorative; visible labels remain the accessible names.
+const iconPaths = {
+  format: '<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3M8 8h8M8 12h6M8 16h8"/>',
+  compact: '<path d="m8 4 4 4 4-4M12 8V2m-4 18 4-4 4 4m-4-4v6M4 12h16"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4"/>',
+  download: '<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>',
+  clear: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
+  import: '<path d="M3 8V5a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v1M3 9h18l-3 11H5L3 9Z"/>',
+  compare: '<path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4"/>',
+  reset: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
+};
+const icon = name => `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${iconPaths[name]}</svg>`;
 app.innerHTML = `
   <header class="header"><a class="brand" href="./"><span class="logo">{ }</span> JSON<span class="brand-light">Studio</span></a><label class="theme-control">主題 <select id="theme"><option value="system">跟隨系統</option><option value="light">Light 淺色</option><option value="dark">Dark 深色</option></select></label></header>
   <main>
@@ -19,6 +31,16 @@ app.innerHTML = `
   <footer><span>資料不會上傳，也不會自動儲存。重新整理前，請先下載或複製。</span><span>JSON Studio <span class="footer-mark">{ }</span></span></footer></main><div id="toast" role="status" class="toast" hidden></div>`;
 
 const views = {};
+document.querySelectorAll('[data-action]').forEach(button => {
+  button.textContent = button.textContent.replace(' ↗', '');
+  button.insertAdjacentHTML('afterbegin', icon(button.dataset.action));
+});
+for (const [id, name] of [['format-all', 'format'], ['compare', 'compare'], ['swap', 'compare'], ['reset-height', 'reset']]) {
+  const button = document.getElementById(id);
+  button.textContent = button.textContent.replace('⇄ ', '');
+  button.insertAdjacentHTML('afterbegin', icon(name));
+}
+document.querySelector('.compare-icon').innerHTML = icon('compare');
 const themeCompartments = {};
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 const readPreference = key => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -39,7 +61,7 @@ function editorTheme() {
 }
 function applyTheme() {
   document.documentElement.dataset.theme = darkTheme() ? 'dark' : 'light';
-  document.querySelector('meta[name="theme-color"]').content = darkTheme() ? '#171e1b' : '#ffffff';
+  document.querySelector('meta[name="theme-color"]').content = darkTheme() ? '#1c201d' : '#f3f4ef';
   for (const side of Object.keys(views)) views[side].dispatch({ effects: themeCompartments[side].reconfigure(editorTheme()) });
 }
 themeSelect.onchange = () => { savePreference('json-studio-theme', themeSelect.value); applyTheme(); };
